@@ -1,24 +1,39 @@
-variable "region" {
-  default = "ap-south-1"
+variable "aws_region" {
+  description = "AWS region"
+  type        = string
+}
+
+variable "vpc_cidr" {
+  description = "VPC CIDR block"
+  type        = string
+}
+
+variable "public_subnets" {
+  description = "Public subnet CIDRs"
+  type        = list(string)
+}
+
+variable "private_subnets" {
+  description = "Private subnet CIDRs"
+  type        = list(string)
+}
+
+variable "azs" {
+  description = "Availability Zones"
+  type        = list(string)
 }
 
 variable "cluster_name" {
-  default = "devops-eks-cluster"
+  description = "EKS cluster name"
+  type        = string
 }
 
-variable "node_instance_type" {
-  default = "t3.medium"
+variable "cluster_version" {
+  description = "EKS cluster version"
+  type        = string
 }
 
-variable "desired_capacity" {
-  default = 2
+variable "tags" {
+  description = "Tags to apply to resources"
+  type        = map(string)
 }
-
-variable "min_size" {
-  default = 2
-}
-
-variable "max_size" {
-  default = 4
-}
-

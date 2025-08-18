@@ -1,28 +1,54 @@
-# Local .terraform directory
-.terraform/
+#######################################
+# Terraform
+#######################################
 
-# Terraform plan files
-*.tfplan
+# Local .terraform directories (both in root and subfolders like backend/)
+**/.terraform/*
+**/.terraform.lock.hcl
 
-# Terraform state files (can contain sensitive data)
+# Terraform state files
 *.tfstate
-*.tfstate.backup
+*.tfstate.*
 
 # Crash log files
 crash.log
+crash.*.log
 
-# Sensitive variable files (optional – depends on your use)
-*.tfvars
-*.tfvars.json
-
-# Override files (commonly used for local customization)
+# Override files (local-only configurations)
 override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
 
-# CLI configuration files
-.terraform.rc
+# tfvars files may contain secrets (never commit real ones)
+*.tfvars
+*.tfvars.json
+
+# Example vars file is safe to commit
+!terraform.tfvars.example
+
+# CLI config files
+.terraformrc
 terraform.rc
 
-# test 
+# Backup files
+*.bak
+*.backup
+
+#######################################
+# Environment / Secrets
+#######################################
+.env
+*.env
+
+#######################################
+# Editors / IDE
+#######################################
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+
+backend/
