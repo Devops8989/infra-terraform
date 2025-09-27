@@ -1,0 +1,2 @@
+curl -o modules/irsa-alb/policies/aws-load-balancer-controller.json \
+  https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.13.3/docs/install/iam_policy.json
