@@ -52,3 +52,4 @@ terraform.rc
 
 
 backend/
+aws access/keys.txt
