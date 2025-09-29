@@ -44,15 +44,15 @@ pipeline {
             }
         }
 
-        stage('Terraform Apply') {
-            steps {
-                dir("env/staging") {
-                    // Optional: automatic apply or require manual approval
-                    input message: "Approve Terraform Apply for STAGING?", ok: 'Apply'
-                    sh 'terraform apply tfplan'
-                }
-            }
-        }
+        // stage('Terraform Apply') {
+        //     steps {
+        //         dir("env/staging") {
+        //             // Optional: automatic apply or require manual approval
+        //             input message: "Approve Terraform Apply for STAGING?", ok: 'Apply'
+        //             sh 'terraform apply tfplan'
+        //         }
+        //     }
+        // }
     }
 
     post {
