@@ -1,71 +1,78 @@
 terraform {
+  required_version = ">= 1.5.0"
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.6"
-    }
   }
 }
 
+# -------- Provider Configuration --------
 provider "aws" {
   region  = var.region
-  profile = "shared-account"
+  profile = var.profile
 }
 
-variable "region" { default = "us-east-1" }
-variable "tf_bucket_name" { default = "myorg-tf-state" }
-variable "dynamodb_table_name" { default = "terraform-locks" }
-
-resource "aws_kms_key" "tfstate" {
-  description             = "KMS key for Terraform remote state"
-  deletion_window_in_days = 30
-  policy                  = <<EOF
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "Enable IAM User Permissions",
-      "Effect": "Allow",
-      "Principal": { "AWS": "${data.aws_caller_identity.current.account_id}" },
-      "Action": "kms:*",
-      "Resource": "*"
-    }
-  ]
-}
-EOF
-}
-
+# -------- Get AWS Account Info --------
 data "aws_caller_identity" "current" {}
 
+# -------- KMS Key for Terraform State Encryption --------
+# resource "aws_kms_key" "tfstate" {
+#   description             = "KMS key for Terraform remote state encryption"
+#   deletion_window_in_days = 30
+#   enable_key_rotation     = true
+
+#   policy = jsonencode({
+#     Version = "2012-10-17"
+#     Statement = [
+#       {
+#         Sid      = "AllowRootAccountFullAccess"
+#         Effect   = "Allow"
+#         Principal = {
+#           AWS = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"
+#         }
+#         Action   = "kms:*"
+#         Resource = "*"
+#       }
+#     ]
+#   })
+# }
+
+# -------- S3 Bucket for Remote State --------
 resource "aws_s3_bucket" "tfstate" {
-  bucket = var.tf_bucket_name
-  acl    = "private"
+  bucket        = var.tf_bucket_name
+  force_destroy = false
 
-  versioning {
-    enabled = true
-  }
-
-  server_side_encryption_configuration {
-    rule {
-      apply_server_side_encryption_by_default {
-        kms_master_key_id = aws_kms_key.tfstate.arn
-        sse_algorithm     = "aws:kms"
-      }
-    }
-  }
-
-  lifecycle_rule {
-    enabled = true
-    noncurrent_version_expiration {
-      days = 30
-    }
+  tags = {
+    Name        = "terraform-backend"
+    Environment = "shared-services"
   }
 }
 
+# Enable Versioning
+# resource "aws_s3_bucket_versioning" "versioning" {
+#   bucket = aws_s3_bucket.tfstate.id
+
+#   versioning_configuration {
+#     status = "Enabled"
+#   }
+# }
+
+# Encrypt Bucket with KMS
+# resource "aws_s3_bucket_server_side_encryption_configuration" "encryption" {
+#   bucket = aws_s3_bucket.tfstate.bucket
+
+#   rule {
+#     apply_server_side_encryption_by_default {
+#       sse_algorithm     = "aws:kms"
+#       kms_master_key_id = aws_kms_key.tfstate.arn
+#     }
+#   }
+# }
+
+# Block All Public Access
 resource "aws_s3_bucket_public_access_block" "block" {
   bucket                  = aws_s3_bucket.tfstate.id
   block_public_acls       = true
@@ -74,6 +81,21 @@ resource "aws_s3_bucket_public_access_block" "block" {
   restrict_public_buckets = true
 }
 
+# Lifecycle Rule - clean old versions
+# resource "aws_s3_bucket_lifecycle_configuration" "lifecycle" {
+#   bucket = aws_s3_bucket.tfstate.id
+
+#   rule {
+#     id     = "expire_old_versions"
+#     status = "Enabled"
+
+#     noncurrent_version_expiration {
+#       noncurrent_days = 30
+#     }
+#   }
+# }
+
+# -------- DynamoDB Table for Terraform Lock --------
 resource "aws_dynamodb_table" "locks" {
   name         = var.dynamodb_table_name
   billing_mode = "PAY_PER_REQUEST"
@@ -83,8 +105,22 @@ resource "aws_dynamodb_table" "locks" {
     name = "LockID"
     type = "S"
   }
+
+  tags = {
+    Name        = "terraform-locks"
+    Environment = "shared-services"
+  }
 }
 
-//output "bucket_name" { value = aws_s3_bucket.tfstate.id }
-//output "dynamodb_table" { value = aws_dynamodb_table.locks.name }
-//output "kms_key_arn" { value = aws_kms_key.tfstate.arn }
+# -------- Outputs --------
+output "s3_bucket_name" {
+  value = aws_s3_bucket.tfstate.bucket
+}
+
+# output "kms_key_arn" {
+#   value = aws_kms_key.tfstate.arn
+# }
+
+output "dynamodb_table_name" {
+  value = aws_dynamodb_table.locks.name
+}
