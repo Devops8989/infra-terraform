@@ -1,7 +1,7 @@
 terraform {
   backend "s3" {
-    bucket = "mybucket"
-    key    = "path/to/my/key"
+    bucket = "doctorlink-tf-state"
+    key    = "doctorlink-tf-state"
     region = "us-east-1"
   }
 }
