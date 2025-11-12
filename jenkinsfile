@@ -59,6 +59,7 @@ pipeline {
             steps {
                 dir("${TF_DIR}") {
                     sh '''
+                        unset AWS_PROFILE
                         echo "Validating Terraform configuration..."
                         terraform validate
                     '''
@@ -70,6 +71,7 @@ pipeline {
             steps {
                 dir("${TF_DIR}") {
                     sh '''
+                        unset AWS_PROFILE
                         echo "Running Terraform plan for shared environment..."
                         terraform plan -input=false
                     '''
