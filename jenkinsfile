@@ -7,7 +7,7 @@ pipeline {
     }
 
     parameters {
-        choice(name: 'ENVIRONMENT', choices: ['staging', 'prod'], description: 'Select which environment to deploy')
+        choice(name: 'ENVIRONMENT', choices: ['staging', 'shared','prod'], description: 'Select which environment to deploy')
         booleanParam(name: 'AUTO_APPLY', defaultValue: false, description: 'Apply Terraform changes automatically?')
         booleanParam(name: 'DESTROY', defaultValue: false, description: 'Destroy infrastructure?')
     }
