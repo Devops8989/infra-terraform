@@ -3,13 +3,7 @@ pipeline {
 
     environment {
         TF_VERSION = "1.6.6"
-        TF_ROOT = "envs"
-    }
-
-    parameters {
-        choice(name: 'ENVIRONMENT', choices: ['staging', 'shared','prod'], description: 'Select which environment to deploy')
-        booleanParam(name: 'AUTO_APPLY', defaultValue: false, description: 'Apply Terraform changes automatically?')
-        booleanParam(name: 'DESTROY', defaultValue: false, description: 'Destroy infrastructure?')
+        TF_DIR = "envs/shared"
     }
 
     stages {
@@ -36,14 +30,14 @@ pipeline {
 
         stage('Checkout Code') {
             steps {
-                git branch: 'main', url: 'https://github.com/Devops8989/infra-terraform.git'
+                git branch: 'main', url: 'https://github.com/<your-username>/<your-repo>.git'
             }
         }
 
         stage('Verify IAM Role Access') {
             steps {
                 sh '''
-                    echo "Verifying IAM Role credentials..."
+                    echo "Verifying IAM Role attached to Jenkins EC2..."
                     aws sts get-caller-identity
                 '''
             }
@@ -51,9 +45,9 @@ pipeline {
 
         stage('Terraform Init') {
             steps {
-                dir("${TF_ROOT}/${ENVIRONMENT}") {
+                dir("${TF_DIR}") {
                     sh '''
-                        echo "Initializing Terraform for ${ENVIRONMENT}..."
+                        echo "Initializing Terraform in shared environment..."
                         terraform init -input=false
                     '''
                 }
@@ -62,7 +56,7 @@ pipeline {
 
         stage('Terraform Validate') {
             steps {
-                dir("${TF_ROOT}/${ENVIRONMENT}") {
+                dir("${TF_DIR}") {
                     sh '''
                         echo "Validating Terraform configuration..."
                         terraform validate
@@ -73,49 +67,10 @@ pipeline {
 
         stage('Terraform Plan') {
             steps {
-                dir("${TF_ROOT}/${ENVIRONMENT}") {
+                dir("${TF_DIR}") {
                     sh '''
-                        echo "Running Terraform plan for ${ENVIRONMENT}..."
-                        terraform plan -out=tfplan -input=false
-                    '''
-                }
-            }
-        }
-
-        stage('Approval Gate (Manual)') {
-            when {
-                expression { return params.AUTO_APPLY == false && params.DESTROY == false }
-            }
-            steps {
-                timeout(time: 10, unit: 'MINUTES') {
-                    input message: "Review the plan above for environment: ${ENVIRONMENT}. Proceed with Apply?"
-                }
-            }
-        }
-
-        stage('Terraform Apply') {
-            when {
-                expression { return params.AUTO_APPLY == true || currentBuild.rawBuild.getAction(hudson.model.ParametersAction)?.getParameter('AUTO_APPLY') == null }
-            }
-            steps {
-                dir("${TF_ROOT}/${ENVIRONMENT}") {
-                    sh '''
-                        echo "Applying Terraform changes for ${ENVIRONMENT}..."
-                        terraform apply -input=false -auto-approve tfplan
-                    '''
-                }
-            }
-        }
-
-        stage('Terraform Destroy (Manual)') {
-            when {
-                expression { return params.DESTROY == true }
-            }
-            steps {
-                dir("${TF_ROOT}/${ENVIRONMENT}") {
-                    sh '''
-                        echo "Destroying infrastructure for ${ENVIRONMENT}..."
-                        terraform destroy -auto-approve
+                        echo "Running Terraform plan for shared environment..."
+                        terraform plan -input=false
                     '''
                 }
             }
@@ -123,16 +78,11 @@ pipeline {
     }
 
     post {
-        always {
-            dir("${TF_ROOT}/${ENVIRONMENT}") {
-                sh 'terraform output || true'
-            }
-        }
         success {
-            echo "✅ Terraform pipeline for ${ENVIRONMENT} completed successfully."
+            echo "✅ Terraform Init/Plan for shared environment completed successfully."
         }
         failure {
-            echo "❌ Terraform pipeline for ${ENVIRONMENT} failed."
+            echo "❌ Terraform pipeline for shared environment failed. Check logs."
         }
     }
 }
