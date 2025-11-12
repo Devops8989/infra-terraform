@@ -2,68 +2,137 @@ pipeline {
     agent any
 
     environment {
-        AWS_DEFAULT_REGION = 'us-east-1'
-        TF_STATE_BUCKET    = 'sajal-s3-demo-1.1.1.3'
-        TF_LOCK_TABLE      = 'terraform-lock'
-        AWS_CREDS          = credentials('aws-credentials-id') // Jenkins AWS credentials
+        TF_VERSION = "1.6.6"
+        TF_ROOT = "envs"
     }
 
-    triggers {
-        // GitHub webhook triggers automatically
-        githubPush()
+    parameters {
+        choice(name: 'ENVIRONMENT', choices: ['staging', 'prod'], description: 'Select which environment to deploy')
+        booleanParam(name: 'AUTO_APPLY', defaultValue: false, description: 'Apply Terraform changes automatically?')
+        booleanParam(name: 'DESTROY', defaultValue: false, description: 'Destroy infrastructure?')
     }
 
     stages {
-
-        stage('Checkout') {
+        stage('Setup Terraform') {
             steps {
-                // Checkout only staging branch
-                git branch: 'main', url: 'https://github.com/org/terraform-infra.git'
+                script {
+                    sh '''
+                        if ! command -v terraform >/dev/null 2>&1; then
+                            echo "Installing Terraform..."
+                            sudo apt-get update -y
+                            sudo apt-get install -y unzip wget
+                            wget https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
+                            unzip terraform_${TF_VERSION}_linux_amd64.zip
+                            sudo mv terraform /usr/local/bin/
+                            terraform -v
+                        else
+                            echo "Terraform already installed."
+                            terraform -v
+                        fi
+                    '''
+                }
+            }
+        }
+
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/Devops8989/infra-terraform.git'
+            }
+        }
+
+        stage('Verify IAM Role Access') {
+            steps {
+                sh '''
+                    echo "Verifying IAM Role credentials..."
+                    aws sts get-caller-identity
+                '''
             }
         }
 
         stage('Terraform Init') {
             steps {
-                dir("envs/staging") {
-                    sh """
-                        terraform init \
-                        -backend-config="bucket=$TF_STATE_BUCKET" \
-                        -backend-config="key=staging/terraform.tfstate" \
-                        -backend-config="region=$AWS_DEFAULT_REGION" \
-                        -backend-config="dynamodb_table=$TF_LOCK_TABLE"
-                    """
+                dir("${TF_ROOT}/${ENVIRONMENT}") {
+                    sh '''
+                        echo "Initializing Terraform for ${ENVIRONMENT}..."
+                        terraform init -input=false
+                    '''
+                }
+            }
+        }
+
+        stage('Terraform Validate') {
+            steps {
+                dir("${TF_ROOT}/${ENVIRONMENT}") {
+                    sh '''
+                        echo "Validating Terraform configuration..."
+                        terraform validate
+                    '''
                 }
             }
         }
 
         stage('Terraform Plan') {
             steps {
-                dir("env/staging") {
-                    sh 'terraform plan -out=tfplan -var="environment=staging" -input=false'
+                dir("${TF_ROOT}/${ENVIRONMENT}") {
+                    sh '''
+                        echo "Running Terraform plan for ${ENVIRONMENT}..."
+                        terraform plan -out=tfplan -input=false
+                    '''
                 }
             }
         }
 
-        // stage('Terraform Apply') {
-        //     steps {
-        //         dir("env/staging") {
-        //             // Optional: automatic apply or require manual approval
-        //             input message: "Approve Terraform Apply for STAGING?", ok: 'Apply'
-        //             sh 'terraform apply tfplan'
-        //         }
-        //     }
-        // }
+        stage('Approval Gate (Manual)') {
+            when {
+                expression { return params.AUTO_APPLY == false && params.DESTROY == false }
+            }
+            steps {
+                timeout(time: 10, unit: 'MINUTES') {
+                    input message: "Review the plan above for environment: ${ENVIRONMENT}. Proceed with Apply?"
+                }
+            }
+        }
+
+        stage('Terraform Apply') {
+            when {
+                expression { return params.AUTO_APPLY == true || currentBuild.rawBuild.getAction(hudson.model.ParametersAction)?.getParameter('AUTO_APPLY') == null }
+            }
+            steps {
+                dir("${TF_ROOT}/${ENVIRONMENT}") {
+                    sh '''
+                        echo "Applying Terraform changes for ${ENVIRONMENT}..."
+                        terraform apply -input=false -auto-approve tfplan
+                    '''
+                }
+            }
+        }
+
+        stage('Terraform Destroy (Manual)') {
+            when {
+                expression { return params.DESTROY == true }
+            }
+            steps {
+                dir("${TF_ROOT}/${ENVIRONMENT}") {
+                    sh '''
+                        echo "Destroying infrastructure for ${ENVIRONMENT}..."
+                        terraform destroy -auto-approve
+                    '''
+                }
+            }
+        }
     }
 
     post {
         always {
-            archiveArtifacts artifacts: '**/terraform.tfstate*', fingerprint: true
+            dir("${TF_ROOT}/${ENVIRONMENT}") {
+                sh 'terraform output || true'
+            }
         }
         success {
-            echo "Terraform staging deployment completed successfully."
+            echo "✅ Terraform pipeline for ${ENVIRONMENT} completed successfully."
         }
         failure {
-            echo "Terraform staging deployment FAILED."
+            echo "❌ Terraform pipeline for ${ENVIRONMENT} failed."
         }
     }
 }
