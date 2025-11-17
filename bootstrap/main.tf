@@ -10,6 +10,15 @@ terraform {
 }
 
 # -------- Provider Configuration --------
+# provider "aws" {
+#   region = var.region
+
+#   assume_role {
+#     role_arn     = "arn:aws:iam::583534901542:role/terraform-backend-access-role"
+#     session_name = "jenkins"
+#   }
+# }
+
 provider "aws" {
   region  = var.region
   profile = var.profile
