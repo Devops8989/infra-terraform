@@ -49,7 +49,7 @@ pipeline {
                     sh '''
                         unset AWS_PROFILE
                         echo "Initializing Terraform in shared environment..."
-                        terraform init -input=false
+                        terraform init -reconfigure -input=false
                     '''
                 }
             }
