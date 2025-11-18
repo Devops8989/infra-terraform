@@ -12,7 +12,7 @@
 terraform {
   backend "s3" {
     bucket         = "doctorlink-tf-state"
-    key            = "shared/terraform.tfstate"
+    key            = "shared/doctorlink-tf-state"
     region         = "us-east-1"
     dynamodb_table = "terraform-locks"
     encrypt        = true
