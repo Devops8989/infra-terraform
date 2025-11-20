@@ -106,6 +106,7 @@ pipeline {
             steps {
                 sh '''
                     sudo apt-get update -y
+                    sudo apt-get install -y jq
 
                     # Install AWS CLI if missing
                     if ! command -v aws >/dev/null 2>&1; then
