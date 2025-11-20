@@ -95,8 +95,9 @@ pipeline {
 
     environment {
         TF_VERSION = "1.6.6"
-        TF_DIR = "envs/shared"
+        TF_DIR     = "envs/shared"
         AWS_REGION = "us-east-1"
+        BACKEND_ROLE_ARN = "arn:aws:iam::583534901542:role/terraform-backend-access-role"
     }
 
     stages {
@@ -104,20 +105,26 @@ pipeline {
         stage('Install Dependencies') {
             steps {
                 sh '''
+                    sudo apt-get update -y
+
                     # Install AWS CLI if missing
                     if ! command -v aws >/dev/null 2>&1; then
                         echo "Installing AWS CLI..."
-                        sudo apt-get update -y
                         sudo apt-get install -y unzip curl
                         curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
                         unzip awscliv2.zip
                         sudo ./aws/install
                     fi
 
+                    # Install JQ
+                    if ! command -v jq >/dev/null 2>&1; then
+                        echo "Installing jq..."
+                        sudo apt-get install -y jq
+                    fi
+
                     # Install Terraform if missing
                     if ! command -v terraform >/dev/null 2>&1; then
                         echo "Installing Terraform..."
-                        sudo apt-get update -y
                         sudo apt-get install -y unzip wget
                         wget https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
                         unzip terraform_${TF_VERSION}_linux_amd64.zip
@@ -126,6 +133,7 @@ pipeline {
 
                     terraform -version
                     aws --version
+                    jq --version
                 '''
             }
         }
@@ -139,9 +147,31 @@ pipeline {
         stage('Verify IAM Role Access') {
             steps {
                 sh '''
-                    echo "Current AWS Caller Identity (IAM Role from EC2 instance):"
+                    echo "Current IAM Identity of Jenkins EC2:"
                     aws sts get-caller-identity
                 '''
+            }
+        }
+
+        stage('Assume Shared Backend Role') {
+            steps {
+                script {
+                    sh '''
+                        echo "Assuming Role: ${BACKEND_ROLE_ARN}"
+
+                        CREDS=$(aws sts assume-role \
+                            --role-arn ${BACKEND_ROLE_ARN} \
+                            --role-session-name jenkinsBackend \
+                            --query "Credentials" --output json)
+
+                        export AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r '.AccessKeyId')
+                        export AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r '.SecretAccessKey')
+                        export AWS_SESSION_TOKEN=$(echo $CREDS | jq -r '.SessionToken')
+
+                        echo "Assumed role successfully:"
+                        aws sts get-caller-identity
+                    '''
+                }
             }
         }
 
@@ -149,8 +179,7 @@ pipeline {
             steps {
                 dir("${TF_DIR}") {
                     sh '''
-                        echo "Running terraform init using backend from shared account..."
-                        unset AWS_PROFILE
+                        echo "Initializing Terraform with Shared Account Backend..."
                         terraform init -reconfigure -input=false
                     '''
                 }
@@ -180,10 +209,10 @@ pipeline {
 
     post {
         success {
-            echo "Terraform Plan completed successfully for shared env."
+            echo "✅ Terraform Init/Validate/Plan completed successfully for shared environment."
         }
         failure {
-            echo "Terraform pipeline failed. Fix the errors."
+            echo "❌ Terraform pipeline failed. Check logs."
         }
     }
 }
