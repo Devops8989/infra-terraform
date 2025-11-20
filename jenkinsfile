@@ -102,42 +102,7 @@ pipeline {
 
     stages {
 
-        stage('Install Dependencies') {
-            steps {
-                sh '''
-                    sudo apt-get update -y
-                    sudo apt-get install -y jq
-
-                    # Install AWS CLI if missing
-                    if ! command -v aws >/dev/null 2>&1; then
-                        echo "Installing AWS CLI..."
-                        sudo apt-get install -y unzip curl
-                        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-                        unzip awscliv2.zip
-                        sudo ./aws/install
-                    fi
-
-                    # Install JQ
-                    if ! command -v jq >/dev/null 2>&1; then
-                        echo "Installing jq..."
-                        sudo apt-get install -y jq
-                    fi
-
-                    # Install Terraform if missing
-                    if ! command -v terraform >/dev/null 2>&1; then
-                        echo "Installing Terraform..."
-                        sudo apt-get install -y unzip wget
-                        wget https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
-                        unzip terraform_${TF_VERSION}_linux_amd64.zip
-                        sudo mv terraform /usr/local/bin/
-                    fi
-
-                    terraform -version
-                    aws --version
-                    jq --version
-                '''
-            }
-        }
+       
 
         stage('Checkout Code') {
             steps {
@@ -151,6 +116,26 @@ pipeline {
                     echo "Current IAM Identity of Jenkins EC2:"
                     aws sts get-caller-identity
                 '''
+            }
+        }
+        stage('Assume Backend Role') {
+    steps {
+        script {
+                 sh '''
+                    echo "Assuming cross-account backend role..."
+                    
+                    CREDS=$(aws sts assume-role \
+                        --role-arn "arn:aws:iam::583534901542:role/terraform-backend-access-role" \
+                        --role-session-name jenkins-tf-session)
+
+                    export AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r '.Credentials.AccessKeyId')
+                    export AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r '.Credentials.SecretAccessKey')
+                    export AWS_SESSION_TOKEN=$(echo $CREDS | jq -r '.Credentials.SessionToken')
+
+                    echo "Caller identity after assuming role:"
+                    aws sts get-caller-identity
+                '''
+                }
             }
         }
 
