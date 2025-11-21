@@ -1,9 +1,79 @@
+// pipeline {
+//     agent any
+
+//     environment {
+//         TF_VERSION = "1.6.6"
+//         TF_DIR     = "envs/shared"
+//         AWS_REGION = "us-east-1"
+//     }
+
+//     stages {
+
+//         stage("Checkout Code") {
+//             steps {
+//                 git branch: 'main', url: 'https://github.com/Devops8989/infra-terraform.git'
+//             }
+//         }
+
+//         stage("Verify EC2 IAM Role") {
+//             steps {
+//                 sh '''
+//                     echo "========== AWS Identity (EC2 IAM Role) =========="
+//                     aws sts get-caller-identity
+//                     echo "================================================="
+//                 '''
+//             }
+//         }
+
+//         stage("Terraform Init (Cross-Account Backend)") {
+//             steps {
+//                 dir("${TF_DIR}") {
+//                     sh '''
+//                         echo "Running Terraform Init..."
+//                         terraform init -reconfigure -input=false
+//                     '''
+//                 }
+//             }
+//         }
+
+//         stage("Terraform Validate") {
+//             steps {
+//                 dir("${TF_DIR}") {
+//                     sh '''
+//                         terraform validate
+//                     '''
+//                 }
+//             }
+//         }
+
+//         stage("Terraform Plan") {
+//             steps {
+//                 dir("${TF_DIR}") {
+//                     sh '''
+//                         terraform plan -input=false
+//                     '''
+//                 }
+//             }
+//         }
+//     }
+
+//     post {
+//         success {
+//             echo "Terraform Plan executed successfully!"
+//         }
+//         failure {
+//             echo "Pipeline Failed — fix the errors."
+//         }
+//     }
+// }
+
 pipeline {
     agent any
 
     environment {
         TF_VERSION = "1.6.6"
-        TF_DIR     = "envs/shared"
+        SHARED_DIR = "envs/shared"
+        STAGING_DIR = "envs/staging"
         AWS_REGION = "us-east-1"
     }
 
@@ -15,7 +85,7 @@ pipeline {
             }
         }
 
-        stage("Verify EC2 IAM Role") {
+        stage("Verify IAM Role on EC2") {
             steps {
                 sh '''
                     echo "========== AWS Identity (EC2 IAM Role) =========="
@@ -25,31 +95,50 @@ pipeline {
             }
         }
 
-        stage("Terraform Init (Cross-Account Backend)") {
+        /* ----------------------------------------------------
+           SHARED ACCOUNT (REMOTE BACKEND) - PLAN ONLY
+        ---------------------------------------------------- */
+        stage("Terraform Init (Shared)") {
             steps {
-                dir("${TF_DIR}") {
+                dir("${SHARED_DIR}") {
                     sh '''
-                        echo "Running Terraform Init..."
+                        echo "Running Terraform Init for SHARED..."
                         terraform init -reconfigure -input=false
                     '''
                 }
             }
         }
 
-        stage("Terraform Validate") {
+        stage("Terraform Plan (Shared)") {
             steps {
-                dir("${TF_DIR}") {
+                dir("${SHARED_DIR}") {
                     sh '''
-                        terraform validate
+                        echo "Running Shared Terraform Plan..."
+                        terraform plan -input=false
                     '''
                 }
             }
         }
 
-        stage("Terraform Plan") {
+        /* ----------------------------------------------------
+           STAGING ENVIRONMENT (ASSUME ROLE)
+        ---------------------------------------------------- */
+        stage("Terraform Init (Staging)") {
             steps {
-                dir("${TF_DIR}") {
+                dir("${STAGING_DIR}") {
                     sh '''
+                        echo "Running Terraform Init for STAGING..."
+                        terraform init -reconfigure -input=false
+                    '''
+                }
+            }
+        }
+
+        stage("Terraform Plan (Staging)") {
+            steps {
+                dir("${STAGING_DIR}") {
+                    sh '''
+                        echo "Running Terraform Plan for STAGING..."
                         terraform plan -input=false
                     '''
                 }
@@ -59,10 +148,10 @@ pipeline {
 
     post {
         success {
-            echo "Terraform Plan executed successfully!"
+            echo "Shared + Staging Terraform Plan finished successfully!"
         }
         failure {
-            echo "Pipeline Failed — fix the errors."
+            echo "Pipeline Failed — fix errors."
         }
     }
 }
