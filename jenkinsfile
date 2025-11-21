@@ -67,13 +67,99 @@
 //     }
 // }
 
+// pipeline {
+//     agent any
+
+//     environment {
+//         TF_VERSION = "1.6.6"
+//         SHARED_DIR = "envs/shared"
+//         STAGING_DIR = "envs/staging"
+//         AWS_REGION = "us-east-1"
+//     }
+
+//     stages {
+
+//         stage("Checkout Code") {
+//             steps {
+//                 git branch: 'main', url: 'https://github.com/Devops8989/infra-terraform.git'
+//             }
+//         }
+
+//         stage("Verify IAM Role on EC2") {
+//             steps {
+//                 sh '''
+//                     echo "========== AWS Identity (EC2 IAM Role) =========="
+//                     aws sts get-caller-identity
+//                     echo "================================================="
+//                 '''
+//             }
+//         }
+
+//         /* ----------------------------------------------------
+//            SHARED ACCOUNT (REMOTE BACKEND) - PLAN ONLY
+//         ---------------------------------------------------- */
+//         stage("Terraform Init (Shared)") {
+//             steps {
+//                 dir("${SHARED_DIR}") {
+//                     sh '''
+//                         echo "Running Terraform Init for SHARED..."
+//                         terraform init -reconfigure -input=false
+//                     '''
+//                 }
+//             }
+//         }
+
+//         stage("Terraform Plan (Shared)") {
+//             steps {
+//                 dir("${SHARED_DIR}") {
+//                     sh '''
+//                         echo "Running Shared Terraform Plan..."
+//                         terraform plan -input=false
+//                     '''
+//                 }
+//             }
+//         }
+
+//         /* ----------------------------------------------------
+//            STAGING ENVIRONMENT (ASSUME ROLE)
+//         ---------------------------------------------------- */
+//         stage("Terraform Init (Staging)") {
+//             steps {
+//                 dir("${STAGING_DIR}") {
+//                     sh '''
+//                         echo "Running Terraform Init for STAGING..."
+//                         terraform init -reconfigure -input=false
+//                     '''
+//                 }
+//             }
+//         }
+
+//         stage("Terraform Plan (Staging)") {
+//             steps {
+//                 dir("${STAGING_DIR}") {
+//                     sh '''
+//                         echo "Running Terraform Plan for STAGING..."
+//                         terraform plan -input=false
+//                     '''
+//                 }
+//             }
+//         }
+//     }
+
+//     post {
+//         success {
+//             echo "Shared + Staging Terraform Plan finished successfully!"
+//         }
+//         failure {
+//             echo "Pipeline Failed — fix errors."
+//         }
+//     }
+// }
 pipeline {
     agent any
 
     environment {
         TF_VERSION = "1.6.6"
-        SHARED_DIR = "envs/shared"
-        STAGING_DIR = "envs/staging"
         AWS_REGION = "us-east-1"
     }
 
@@ -81,7 +167,7 @@ pipeline {
 
         stage("Checkout Code") {
             steps {
-                git branch: 'main', url: 'https://github.com/Devops8989/infra-terraform.git'
+                checkout scm
             }
         }
 
@@ -95,52 +181,51 @@ pipeline {
             }
         }
 
-        /* ----------------------------------------------------
-           SHARED ACCOUNT (REMOTE BACKEND) - PLAN ONLY
-        ---------------------------------------------------- */
-        stage("Terraform Init (Shared)") {
+        stage("Terraform Init") {
             steps {
-                dir("${SHARED_DIR}") {
+                script {
+                    if (env.BRANCH_NAME == "feature" || env.BRANCH_NAME.startsWith("feature/")) {
+                        env.TF_DIR = "envs/shared"
+                    } 
+                    else if (env.BRANCH_NAME == "staging") {
+                        env.TF_DIR = "envs/staging"
+                    } 
+                    else {
+                        error("Unsupported branch. Use feature/* or staging.")
+                    }
+                }
+
+                dir("${TF_DIR}") {
                     sh '''
-                        echo "Running Terraform Init for SHARED..."
                         terraform init -reconfigure -input=false
                     '''
                 }
             }
         }
 
-        stage("Terraform Plan (Shared)") {
+        stage("Terraform Validate") {
             steps {
-                dir("${SHARED_DIR}") {
-                    sh '''
-                        echo "Running Shared Terraform Plan..."
-                        terraform plan -input=false
-                    '''
+                dir("${TF_DIR}") {
+                    sh "terraform validate"
                 }
             }
         }
 
-        /* ----------------------------------------------------
-           STAGING ENVIRONMENT (ASSUME ROLE)
-        ---------------------------------------------------- */
-        stage("Terraform Init (Staging)") {
+        stage("Terraform Plan") {
             steps {
-                dir("${STAGING_DIR}") {
-                    sh '''
-                        echo "Running Terraform Init for STAGING..."
-                        terraform init -reconfigure -input=false
-                    '''
+                dir("${TF_DIR}") {
+                    sh "terraform plan -input=false"
                 }
             }
         }
 
-        stage("Terraform Plan (Staging)") {
+        stage("Terraform Apply (ONLY for staging branch)") {
+            when {
+                branch "staging"
+            }
             steps {
-                dir("${STAGING_DIR}") {
-                    sh '''
-                        echo "Running Terraform Plan for STAGING..."
-                        terraform plan -input=false
-                    '''
+                dir("${TF_DIR}") {
+                    sh "terraform apply -auto-approve -input=false"
                 }
             }
         }
@@ -148,10 +233,10 @@ pipeline {
 
     post {
         success {
-            echo "Shared + Staging Terraform Plan finished successfully!"
+            echo "Pipeline Completed Successfully!"
         }
         failure {
-            echo "Pipeline Failed — fix errors."
+            echo "Pipeline Failed — Fix issues."
         }
     }
 }
