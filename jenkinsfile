@@ -95,14 +95,23 @@ pipeline {
 
     environment {
         TF_VERSION = "1.6.6"
-        TF_DIR     = "envs/shared"
+        TF_DIR = "envs/shared"
         AWS_REGION = "us-east-1"
-        BACKEND_ROLE_ARN = "arn:aws:iam::583534901542:role/terraform-backend-access-role"
     }
 
     stages {
 
-       
+        stage('Pre-installed Tools Check') {
+            steps {
+                sh '''
+                    echo "Terraform version:"
+                    terraform -version
+
+                    echo "AWS CLI version:"
+                    aws --version
+                '''
+            }
+        }
 
         stage('Checkout Code') {
             steps {
@@ -110,32 +119,12 @@ pipeline {
             }
         }
 
-        stage('Verify IAM Role Access') {
+        stage('Verify Current IAM Role') {
             steps {
                 sh '''
-                    echo "Current IAM Identity of Jenkins EC2:"
+                    echo "Current AWS Identity (EC2 IAM Role):"
                     aws sts get-caller-identity
                 '''
-            }
-        }
-        stage('Assume Backend Role') {
-    steps {
-        script {
-                 sh '''
-                    echo "Assuming cross-account backend role..."
-                    
-                    CREDS=$(aws sts assume-role \
-                        --role-arn "arn:aws:iam::583534901542:role/terraform-backend-access-role" \
-                        --role-session-name jenkins-tf-session)
-
-                    export AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r '.Credentials.AccessKeyId')
-                    export AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r '.Credentials.SecretAccessKey')
-                    export AWS_SESSION_TOKEN=$(echo $CREDS | jq -r '.Credentials.SessionToken')
-
-                    echo "Caller identity after assuming role:"
-                    aws sts get-caller-identity
-                '''
-                }
             }
         }
 
@@ -143,18 +132,17 @@ pipeline {
             steps {
                 script {
                     sh '''
-                        echo "Assuming Role: ${BACKEND_ROLE_ARN}"
+                        echo "Assuming cross-account role for backend access..."
 
                         CREDS=$(aws sts assume-role \
-                            --role-arn ${BACKEND_ROLE_ARN} \
-                            --role-session-name jenkinsBackend \
-                            --query "Credentials" --output json)
+                            --role-arn "arn:aws:iam::583534901542:role/terraform-backend-access-role" \
+                            --role-session-name jenkins-backend-session)
 
-                        export AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r '.AccessKeyId')
-                        export AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r '.SecretAccessKey')
-                        export AWS_SESSION_TOKEN=$(echo $CREDS | jq -r '.SessionToken')
+                        export AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r '.Credentials.AccessKeyId')
+                        export AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r '.Credentials.SecretAccessKey')
+                        export AWS_SESSION_TOKEN=$(echo $CREDS | jq -r '.Credentials.SessionToken')
 
-                        echo "Assumed role successfully:"
+                        echo "Identity after assuming shared-account role:"
                         aws sts get-caller-identity
                     '''
                 }
@@ -165,7 +153,7 @@ pipeline {
             steps {
                 dir("${TF_DIR}") {
                     sh '''
-                        echo "Initializing Terraform with Shared Account Backend..."
+                        echo "Running terraform init with assumed backend role..."
                         terraform init -reconfigure -input=false
                     '''
                 }
@@ -195,10 +183,10 @@ pipeline {
 
     post {
         success {
-            echo "✅ Terraform Init/Validate/Plan completed successfully for shared environment."
+            echo "Terraform Plan completed successfully for shared environment."
         }
         failure {
-            echo "❌ Terraform pipeline failed. Check logs."
+            echo "Terraform pipeline FAILED — check IAM, role assumption, or backend config."
         }
     }
 }
