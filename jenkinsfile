@@ -1,166 +1,42 @@
-// pipeline {
-//     agent any
-
-//     environment {
-//         TF_VERSION = "1.6.6"
-//         TF_DIR = "envs/shared"
-//     }
-
-//     stages {
-//         stage('Setup Terraform') {
-//             steps {
-//                 script {
-//                     sh '''
-//                         if ! command -v terraform >/dev/null 2>&1; then
-//                             echo "Installing Terraform..."
-//                             sudo apt-get update -y
-//                             sudo apt-get install -y unzip wget
-//                             wget https://releases.hashicorp.com/terraform/${TF_VERSION}/terraform_${TF_VERSION}_linux_amd64.zip
-//                             unzip terraform_${TF_VERSION}_linux_amd64.zip
-//                             sudo mv terraform /usr/local/bin/
-//                             terraform -v
-//                         else
-//                             echo "Terraform already installed."
-//                             terraform -v
-//                         fi
-//                     '''
-//                 }
-//             }
-//         }
-
-//         stage('Checkout Code') {
-//             steps {
-//                 git branch: 'main', url: 'https://github.com/Devops8989/infra-terraform.git'
-//             }
-//         }
-
-//         stage('Verify IAM Role Access') {
-//             steps {
-//                 sh '''
-//                     echo "Verifying IAM Role attached to Jenkins EC2..."
-//                     aws sts get-caller-identity
-//                 '''
-//             }
-//         }
-
-//         stage('Terraform Init') {
-//             steps {
-//                 dir("${TF_DIR}") {
-//                     sh '''
-//                         unset AWS_PROFILE
-//                         echo "Initializing Terraform in shared environment..."
-//                         terraform init -reconfigure -input=false
-//                     '''
-//                 }
-//             }
-//         }
-
-//         stage('Terraform Validate') {
-//             steps {
-//                 dir("${TF_DIR}") {
-//                     sh '''
-//                         unset AWS_PROFILE
-//                         echo "Validating Terraform configuration..."
-//                         terraform validate
-//                     '''
-//                 }
-//             }
-//         }
-
-//         stage('Terraform Plan') {
-//             steps {
-//                 dir("${TF_DIR}") {
-//                     sh '''
-//                         unset AWS_PROFILE
-//                         echo "Running Terraform plan for shared environment..."
-//                         terraform plan -input=false
-//                     '''
-//                 }
-//             }
-//         }
-//     }
-
-//     post {
-//         success {
-//             echo "✅ Terraform Init/Plan for shared environment completed successfully."
-//         }
-//         failure {
-//             echo "❌ Terraform pipeline for shared environment failed. Check logs."
-//         }
-//     }
-// }
-
 pipeline {
     agent any
 
     environment {
         TF_VERSION = "1.6.6"
-        TF_DIR = "envs/shared"
+        TF_DIR     = "envs/shared"
         AWS_REGION = "us-east-1"
     }
 
     stages {
 
-        stage('Pre-installed Tools Check') {
-            steps {
-                sh '''
-                    echo "Terraform version:"
-                    terraform -version
-
-                    echo "AWS CLI version:"
-                    aws --version
-                '''
-            }
-        }
-
-        stage('Checkout Code') {
+        stage("Checkout Code") {
             steps {
                 git branch: 'main', url: 'https://github.com/Devops8989/infra-terraform.git'
             }
         }
 
-        stage('Verify Current IAM Role') {
+        stage("Verify EC2 IAM Role") {
             steps {
                 sh '''
-                    echo "Current AWS Identity (EC2 IAM Role):"
+                    echo "========== AWS Identity (EC2 IAM Role) =========="
                     aws sts get-caller-identity
+                    echo "================================================="
                 '''
             }
         }
 
-        stage('Assume Shared Backend Role') {
-            steps {
-                script {
-                    sh '''
-                        echo "Assuming cross-account role for backend access..."
-
-                        CREDS=$(aws sts assume-role \
-                            --role-arn "arn:aws:iam::583534901542:role/terraform-backend-access-role" \
-                            --role-session-name jenkins-backend-session)
-
-                        export AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r '.Credentials.AccessKeyId')
-                        export AWS_SECRET_ACCESS_KEY=$(echo $CREDS | jq -r '.Credentials.SecretAccessKey')
-                        export AWS_SESSION_TOKEN=$(echo $CREDS | jq -r '.Credentials.SessionToken')
-
-                        echo "Identity after assuming shared-account role:"
-                        aws sts get-caller-identity
-                    '''
-                }
-            }
-        }
-
-        stage('Terraform Init') {
+        stage("Terraform Init (Cross-Account Backend)") {
             steps {
                 dir("${TF_DIR}") {
                     sh '''
-                        echo "Running terraform init with assumed backend role..."
+                        echo "Running Terraform Init..."
                         terraform init -reconfigure -input=false
                     '''
                 }
             }
         }
 
-        stage('Terraform Validate') {
+        stage("Terraform Validate") {
             steps {
                 dir("${TF_DIR}") {
                     sh '''
@@ -170,7 +46,7 @@ pipeline {
             }
         }
 
-        stage('Terraform Plan') {
+        stage("Terraform Plan") {
             steps {
                 dir("${TF_DIR}") {
                     sh '''
@@ -183,10 +59,10 @@ pipeline {
 
     post {
         success {
-            echo "Terraform Plan completed successfully for shared environment."
+            echo "Terraform Plan executed successfully!"
         }
         failure {
-            echo "Terraform pipeline FAILED — check IAM, role assumption, or backend config."
+            echo "Pipeline Failed — fix the errors."
         }
     }
 }
