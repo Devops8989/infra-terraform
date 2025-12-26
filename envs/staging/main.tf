@@ -25,18 +25,35 @@ provider "aws" {
   region = "us-east-1"
 
   assume_role {
-    role_arn = "arn:aws:iam::642384808985:role/TerraformDeployRole-staging"
+    //role_arn = "arn:aws:iam::642384808985:role/TerraformDeployRole-staging"
+    role_arn     = "arn:aws:iam::583534901542:role/terraform-deploy-role-shared"
   }
 }
 
 
-module "vpc" {
-  source = "../../modules/vpc"
+# module "vpc" {
+#   source = "../../modules/vpc"
 
-  environment     = var.environment
-  vpc_cidr        = var.vpc_cidr
-  azs             = var.azs
-  public_subnets  = var.public_subnets
-  private_subnets = var.private_subnets
-  tags            = var.tags
+#   environment     = var.environment
+#   vpc_cidr        = var.vpc_cidr
+#   azs             = var.azs
+#   public_subnets  = var.public_subnets
+#   private_subnets = var.private_subnets
+#   tags            = var.tags
+# }
+
+module "ec2_instance" {
+  source  = "terraform-aws-modules/ec2-instance/aws"
+
+  name = "single-instance"
+
+  instance_type = "t3.micro"
+  key_name      = "user1"
+  monitoring    = true
+  subnet_id     = "subnet-eddcdzz4"
+
+  tags = {
+    Terraform   = "true"
+    Environment = "dev"
+  }
 }

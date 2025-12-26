@@ -15,7 +15,8 @@ terraform {
     encrypt        = true
 
     assume_role = {
-      role_arn     = "arn:aws:iam::642384808985:role/TerraformDeployRole-staging"
+     // role_arn     = "arn:aws:iam::642384808985:role/TerraformDeployRole-staging"
+      role_arn     = "arn:aws:iam::583534901542:role/terraform-backend-access-role"
       session_name = "tf-backend"
     }
   }
